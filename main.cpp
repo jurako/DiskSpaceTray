@@ -40,7 +40,7 @@ NOTIFYICONDATAW g_tray{};
 // Get free space on C:
 // ============================================================
 
-unsigned long long GetFreeSpace()
+unsigned long long GetDiskFreeSpaceBytes()
 {
     ULARGE_INTEGER freeBytes{};
     ULARGE_INTEGER totalBytes{};
@@ -349,7 +349,7 @@ HICON CreateDiskIcon(
 void UpdateTray()
 {
     unsigned long long freeBytes =
-        GetFreeSpace();
+        GetDiskFreeSpaceBytes();
 
     int iconSize =
         GetIconSize(g_hwnd);
@@ -658,7 +658,7 @@ int WINAPI wWinMain(
 
     g_icon =
         CreateDiskIcon(
-            GetFreeSpace(),
+            GetDiskFreeSpaceBytes(),
             GetIconSize(g_hwnd)
         );
 
