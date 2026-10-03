@@ -19,16 +19,14 @@
 constexpr UINT WM_TRAYICON = WM_USER + 1;
 constexpr UINT_PTR TIMER_ID = 1;
 
-// Update every 10 seconds.
-constexpr UINT UPDATE_INTERVAL = 10000;
+constexpr UINT UPDATE_INTERVAL = 10000; // 10 seconds
 
-// Menu commands.
 constexpr UINT ID_REFRESH = 1001;
 constexpr UINT ID_EXIT    = 1002;
 
 
 // ============================================================
-// Globals
+// Global variables
 // ============================================================
 
 HWND g_hwnd = nullptr;
@@ -60,24 +58,21 @@ unsigned long long GetDiskFreeSpaceBytes()
 
 
 // ============================================================
-// Determine icon size based on Windows DPI
+// Determine appropriate icon size for current DPI
 // ============================================================
 
 int GetIconSize(HWND hwnd)
 {
     UINT dpi = 96;
 
-    // GetDpiForWindow is available on modern Windows 10/11.
     if (hwnd)
     {
         dpi = GetDpiForWindow(hwnd);
     }
 
-    // System tray icons are normally approximately 16px at
-    // 100% scaling. Scale appropriately for high-DPI displays.
+    // Base tray icon size: 16x16 at 100% scaling.
     int size = MulDiv(16, dpi, 96);
 
-    // Keep the generated bitmap within sensible limits.
     if (size < 16)
         size = 16;
 
@@ -89,7 +84,7 @@ int GetIconSize(HWND hwnd)
 
 
 // ============================================================
-// Create the tray icon
+// Create tray icon containing free-space text
 // ============================================================
 
 HICON CreateDiskIcon(
@@ -102,8 +97,9 @@ HICON CreateDiskIcon(
     constexpr unsigned long long GB =
         1024ULL * 1024ULL * 1024ULL;
 
+
     // --------------------------------------------------------
-    // Work out the text
+    // Create text
     // --------------------------------------------------------
 
     std::wstring text;
@@ -114,6 +110,8 @@ HICON CreateDiskIcon(
 
     if (freeBytes < GB)
     {
+        // Less than 1 GB -> show MB.
+
         unsigned long long freeMB =
             freeBytes / MB;
 
@@ -122,9 +120,10 @@ HICON CreateDiskIcon(
     }
     else
     {
+        // 1 GB or more -> show GB.
+
         std::wstringstream ss;
 
-        // Use one decimal place below 10 GB.
         if (freeGB < 10.0)
         {
             ss << std::fixed
@@ -143,37 +142,46 @@ HICON CreateDiskIcon(
 
 
     // --------------------------------------------------------
-    // Select color
+    // Select background color
     // --------------------------------------------------------
 
     COLORREF background;
 
     if (freeGB < 5.0)
     {
-        // Critical
+        // Critical: red
         background = RGB(210, 55, 55);
     }
     else if (freeGB < 20.0)
     {
-        // Warning
+        // Warning: amber
         background = RGB(210, 165, 45);
     }
     else
     {
-        // Normal
+        // Normal: green
         background = RGB(45, 155, 85);
     }
 
 
     // --------------------------------------------------------
-    // Create drawing surface
+    // Create drawing DC
     // --------------------------------------------------------
 
     HDC screenDC =
         GetDC(nullptr);
 
+    if (!screenDC)
+        return nullptr;
+
     HDC dc =
         CreateCompatibleDC(screenDC);
+
+    if (!dc)
+    {
+        ReleaseDC(nullptr, screenDC);
+        return nullptr;
+    }
 
     HBITMAP bitmap =
         CreateCompatibleBitmap(
@@ -182,12 +190,19 @@ HICON CreateDiskIcon(
             size
         );
 
+    if (!bitmap)
+    {
+        DeleteDC(dc);
+        ReleaseDC(nullptr, screenDC);
+        return nullptr;
+    }
+
     HGDIOBJ oldBitmap =
         SelectObject(dc, bitmap);
 
 
     // --------------------------------------------------------
-    // Background
+    // Fill background
     // --------------------------------------------------------
 
     HBRUSH brush =
@@ -270,7 +285,10 @@ HICON CreateDiskIcon(
 
 
     // --------------------------------------------------------
-    // Create mask
+    // Create icon mask
+    //
+    // BLACK = opaque
+    // WHITE = transparent
     // --------------------------------------------------------
 
     HBITMAP mask =
@@ -282,19 +300,40 @@ HICON CreateDiskIcon(
             nullptr
         );
 
+    if (!mask)
+    {
+        SelectObject(dc, oldBitmap);
+        DeleteObject(bitmap);
+        DeleteDC(dc);
+        ReleaseDC(nullptr, screenDC);
+        return nullptr;
+    }
+
     HDC maskDC =
         CreateCompatibleDC(screenDC);
+
+    if (!maskDC)
+    {
+        SelectObject(dc, oldBitmap);
+        DeleteObject(bitmap);
+        DeleteObject(mask);
+        DeleteDC(dc);
+        ReleaseDC(nullptr, screenDC);
+        return nullptr;
+    }
 
     HGDIOBJ oldMask =
         SelectObject(maskDC, mask);
 
+    // IMPORTANT:
+    // Black means the icon is opaque.
     PatBlt(
         maskDC,
         0,
         0,
         size,
         size,
-        WHITENESS
+        BLACKNESS
     );
 
     SelectObject(
@@ -306,7 +345,7 @@ HICON CreateDiskIcon(
 
 
     // --------------------------------------------------------
-    // Create Windows icon
+    // Create Windows HICON
     // --------------------------------------------------------
 
     ICONINFO iconInfo{};
@@ -343,7 +382,7 @@ HICON CreateDiskIcon(
 
 
 // ============================================================
-// Update tray icon
+// Update tray icon and tooltip
 // ============================================================
 
 void UpdateTray()
@@ -377,7 +416,7 @@ void UpdateTray()
 
 
     // --------------------------------------------------------
-    // Tooltip
+    // Create detailed tooltip
     // --------------------------------------------------------
 
     constexpr unsigned long long MB =
@@ -418,7 +457,7 @@ void UpdateTray()
 
 
     // --------------------------------------------------------
-    // Tell Windows to redraw the tray icon.
+    // Tell Windows to update the tray icon
     // --------------------------------------------------------
 
     Shell_NotifyIconW(
@@ -429,7 +468,7 @@ void UpdateTray()
 
 
 // ============================================================
-// Context menu
+// Show right-click menu
 // ============================================================
 
 void ShowContextMenu()
@@ -467,7 +506,7 @@ void ShowContextMenu()
     );
 
 
-    // Required for correct tray-menu behaviour.
+    // Required for tray menus.
     SetForegroundWindow(g_hwnd);
 
 
@@ -543,7 +582,7 @@ LRESULT CALLBACK WindowProc(
 
     case WM_DPICHANGED:
 
-        // Recreate icon at the new DPI.
+        // Recreate the icon at the new DPI.
         UpdateTray();
 
         return 0;
@@ -593,7 +632,7 @@ int WINAPI wWinMain(
     int)
 {
     // --------------------------------------------------------
-    // Tell Windows that this application understands DPI.
+    // Tell Windows that this application is DPI aware.
     // --------------------------------------------------------
 
     SetProcessDpiAwarenessContext(
@@ -670,7 +709,7 @@ int WINAPI wWinMain(
 
 
     // --------------------------------------------------------
-    // Configure tray notification
+    // Configure notification-area icon
     // --------------------------------------------------------
 
     g_tray.cbSize =
@@ -717,7 +756,7 @@ int WINAPI wWinMain(
 
 
     // --------------------------------------------------------
-    // Update immediately
+    // Set initial value
     // --------------------------------------------------------
 
     UpdateTray();
@@ -736,7 +775,7 @@ int WINAPI wWinMain(
 
 
     // --------------------------------------------------------
-    // Message loop
+    // Windows message loop
     // --------------------------------------------------------
 
     MSG message{};
