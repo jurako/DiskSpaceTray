@@ -228,11 +228,13 @@ HICON CreateDiskIcon(
     // Draw text
     // --------------------------------------------------------
 
+    // Larger text, approximately matching the apparent
+    // size of Windows tray text such as "ENG".
     int fontHeight =
-        static_cast<int>(size * 0.43);
+        static_cast<int>(size * 0.62);
 
-    if (fontHeight < 8)
-        fontHeight = 8;
+    if (fontHeight < 10)
+        fontHeight = 10;
 
     HFONT font =
         CreateFontW(
