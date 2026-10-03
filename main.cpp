@@ -228,13 +228,43 @@ HICON CreateDiskIcon(
     // Draw text
     // --------------------------------------------------------
 
-    // Larger text, approximately matching the apparent
-    // size of Windows tray text such as "ENG".
-    int fontHeight =
-        static_cast<int>(size * 0.62);
+    // Make short values very large.
+    //
+    // Examples:
+    //
+    //   25G   -> approximately 72% of icon height
+    //   850M  -> approximately 72%
+    //   9.8G  -> approximately 62%
+    //   12.5G -> approximately 52%
+    //
+    // This allows short values to look much closer to
+    // the apparent size of Windows tray text such as "ENG".
 
-    if (fontHeight < 10)
-        fontHeight = 10;
+    int fontHeight;
+
+    if (text.length() >= 5)
+    {
+        fontHeight =
+            static_cast<int>(size * 0.52);
+    }
+    else if (text.length() >= 4)
+    {
+        fontHeight =
+            static_cast<int>(size * 0.62);
+    }
+    else
+    {
+        fontHeight =
+            static_cast<int>(size * 0.72);
+    }
+
+    if (fontHeight < 9)
+        fontHeight = 9;
+
+
+    // --------------------------------------------------------
+    // Create Segoe UI Bold font
+    // --------------------------------------------------------
 
     HFONT font =
         CreateFontW(
@@ -254,8 +284,23 @@ HICON CreateDiskIcon(
             L"Segoe UI"
         );
 
+    if (!font)
+    {
+        SelectObject(dc, oldBitmap);
+        DeleteObject(bitmap);
+        DeleteDC(dc);
+        ReleaseDC(nullptr, screenDC);
+        return nullptr;
+    }
+
+
     HGDIOBJ oldFont =
         SelectObject(dc, font);
+
+
+    // --------------------------------------------------------
+    // Text rendering settings
+    // --------------------------------------------------------
 
     SetBkMode(
         dc,
@@ -267,16 +312,45 @@ HICON CreateDiskIcon(
         RGB(255, 255, 255)
     );
 
+
+    // --------------------------------------------------------
+    // Text rectangle
+    //
+    // Leave a tiny margin around the text so the large
+    // characters don't touch the icon edges.
+    // --------------------------------------------------------
+
+    int margin =
+        max(0, size / 16);
+
+    RECT textRect{
+        margin,
+        margin,
+        size - margin,
+        size - margin
+    };
+
+
+    // --------------------------------------------------------
+    // Draw centered text
+    // --------------------------------------------------------
+
     DrawTextW(
         dc,
         text.c_str(),
         -1,
-        &rect,
+        &textRect,
         DT_CENTER |
         DT_VCENTER |
         DT_SINGLELINE |
-        DT_NOPREFIX
+        DT_NOPREFIX |
+        DT_NOCLIP
     );
+
+
+    // --------------------------------------------------------
+    // Restore font and delete it
+    // --------------------------------------------------------
 
     SelectObject(
         dc,
@@ -311,6 +385,7 @@ HICON CreateDiskIcon(
         return nullptr;
     }
 
+
     HDC maskDC =
         CreateCompatibleDC(screenDC);
 
@@ -324,10 +399,11 @@ HICON CreateDiskIcon(
         return nullptr;
     }
 
+
     HGDIOBJ oldMask =
         SelectObject(maskDC, mask);
 
-    // IMPORTANT:
+
     // Black means the icon is opaque.
     PatBlt(
         maskDC,
@@ -337,6 +413,7 @@ HICON CreateDiskIcon(
         size,
         BLACKNESS
     );
+
 
     SelectObject(
         maskDC,
