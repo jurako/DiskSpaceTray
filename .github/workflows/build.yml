@@ -1,0 +1,27 @@
+name: Build Windows application
+
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Get source code
+        uses: actions/checkout@v6
+
+      - name: Build application
+        shell: cmd
+        run: |
+          call "%ProgramFiles%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath > vs_path.txt
+          set /p VS_PATH=<vs_path.txt
+          call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat"
+          cl /nologo /O2 /EHsc /DUNICODE /D_UNICODE /DWIN32 main.cpp /Fe:DiskSpaceTray.exe /link /SUBSYSTEM:WINDOWS
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiskSpaceTray
+          path: DiskSpaceTray.exe
